@@ -13,7 +13,6 @@
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap');
         body { font-family: 'Noto Sans KR', sans-serif; font-size: 14px; }
         
-        /* 모달 스타일 */
         .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 50; display: none; justify-content: center; align-items: center; }
         .modal-content { background: white; width: 90%; max-width: 450px; border-radius: 12px; padding: 24px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); transform: scale(0.95); transition: transform 0.2s; }
         .modal.active { display: flex; }
@@ -108,56 +107,41 @@
     </div>
 
     <script>
-        // 1. Supabase 설정 (보내주신 새 키 적용됨)
+        // 1. Supabase 설정
         const SUPABASE_URL = 'https://rfiloowzyvrfzmygpjra.supabase.co';
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJmaWxvb3d6eXZyZnpteWdwanJhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM0MjE1NDgsImV4cCI6MjA3ODk5NzU0OH0.m6OfTzgdc3YLDRWwE3ZvMAXLZYtsygcWkKxKB8HCezg';
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        // 2. 페이지 로딩 완료 시 실행
+        // 2. 페이지 초기화
         document.addEventListener('DOMContentLoaded', async () => {
             try {
-                // 세션 체크
                 const { data: { session } } = await supabase.auth.getSession();
                 if (!session) {
                     alert("로그인이 필요합니다.");
                     window.location.href = 'index.html';
                     return;
                 }
-
-                // 이메일 표시
                 const emailEl = document.getElementById('userEmail');
-                if (emailEl && session.user) {
-                    emailEl.innerText = session.user.email;
-                }
-
-                // 데이터 불러오기
+                if (emailEl && session.user) emailEl.innerText = session.user.email;
+                
                 await loadData();
-
             } catch (error) {
                 console.error("초기화 오류:", error);
                 loadData(); 
             }
         });
 
-        // 3. 데이터 불러오기 및 그리기
+        // 3. 데이터 로드 (수정됨)
         async function loadData() {
             const tbody = document.getElementById('listBody');
-            if (!tbody) return; // 에러 방지
-
-            // 로딩 표시
+            if (!tbody) return;
             if (!tbody.innerHTML.trim()) {
                 tbody.innerHTML = '<tr><td colspan="6" class="p-8 text-center"><i class="fa-solid fa-spinner fa-spin"></i> 로딩중...</td></tr>';
             }
 
             const { data, error } = await supabase.from('overseas_items').select('*').order('created_at', { ascending: false });
 
-            if (error) {
-                console.error("데이터 로드 실패:", error);
-                tbody.innerHTML = '<tr><td colspan="6" class="p-8 text-center text-red-500">데이터를 불러오지 못했습니다.</td></tr>';
-                return;
-            }
-
-            if (!data || data.length === 0) {
+            if (error || !data || data.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="6" class="p-8 text-center">등록된 내역이 없습니다.</td></tr>';
                 return;
             }
@@ -166,16 +150,19 @@
             
             for (const row of data) {
                 const date = row.created_at.split('T')[0];
-                const bl = row.bl_no ? row.bl_no.replace(/ /g, '') : ''; // 공백 제거
+                const bl = row.bl_no ? row.bl_no.replace(/ /g, '') : ''; 
 
-                const isNumeric = /^\d+$/.test(bl); // 숫자만 있는지 확인
+                // 숫자만 있는지 여부 체크 (배송사 구분에만 사용)
+                const isNumeric = /^\d+$/.test(bl);
                 
                 // 링크 설정
                 let deliveryUrl = '';
                 let deliveryName = '';
-                // 유니패스 모바일 링크
+                
+                // [수정됨] 유니패스 버튼은 이제 조건 없이 무조건 생성됩니다.
                 const unipassUrl = `https://unipass.customs.go.kr/csp/hportal/m/cargo/cargoInfo/selectCargoInfo.do?hblNo=${bl}`;
 
+                // 배송사 링크 구분 (숫자면 CJ, 영문섞이면 17Track)
                 if (isNumeric) {
                     deliveryUrl = `https://www.shiptrack.co.kr/track/CJ/${bl}`;
                     deliveryName = 'CJ택배';
@@ -198,13 +185,9 @@
 
                         <td class="text-center">
                             <div class="flex justify-center gap-2">
-                                ${isNumeric ? 
-                                    `<a href="javascript:openPopup('${unipassUrl}')" class="flex items-center bg-blue-50 border border-blue-200 text-blue-700 px-3 py-1.5 rounded text-sm font-bold hover:bg-blue-100 transition" title="관세청 통관목록 상세조회">
-                                        <i class="fa-solid fa-building-columns mr-1"></i> 통관상세
-                                    </a>` 
-                                    : 
-                                    `<span class="text-xs text-slate-300 py-2 select-none">관세청 조회불가</span>`
-                                }
+                                <a href="javascript:openPopup('${unipassUrl}')" class="flex items-center bg-blue-50 border border-blue-200 text-blue-700 px-3 py-1.5 rounded text-sm font-bold hover:bg-blue-100 transition" title="관세청 통관목록 상세조회">
+                                    <i class="fa-solid fa-building-columns mr-1"></i> 통관상세
+                                </a>
 
                                 <a href="javascript:openPopup('${deliveryUrl}')" class="flex items-center bg-white border border-slate-300 text-slate-600 px-3 py-1.5 rounded text-sm hover:bg-slate-800 hover:text-white transition">
                                     <i class="fa-solid fa-truck mr-1"></i> ${deliveryName}
@@ -221,30 +204,22 @@
             }
         }
 
-        // 4. 신규 저장
         async function saveItem() {
             const name = document.getElementById('itemName').value;
             const bl = document.getElementById('blNo').value;
             const note = document.getElementById('note').value;
 
-            if (!name || !bl) {
-                alert("품목명과 운송장번호를 입력해주세요.");
-                return;
-            }
-            // 숫자, 영문만 남기고 공백 제거
+            if (!name || !bl) { return alert("정보를 입력해주세요."); }
+            
+            // [수정됨] 숫자와 영문만 남기되, 대소문자 변환 없이 그대로 저장
             const cleanBl = bl.replace(/[^a-zA-Z0-9]/g, '');
 
             const { error } = await supabase.from('overseas_items').insert([{ item_name: name, bl_no: cleanBl, note: note }]);
 
-            if (error) {
-                alert("저장 실패: " + error.message);
-            } else {
-                closeModal();
-                loadData(); // 저장 후 목록 갱신
-            }
+            if (error) { alert("저장 실패: " + error.message); }
+            else { closeModal(); loadData(); }
         }
 
-        // 5. 삭제
         async function deleteItem(id) {
             if (confirm("삭제하시겠습니까?")) {
                 const { error } = await supabase.from('overseas_items').delete().eq('id', id);
@@ -252,7 +227,6 @@
             }
         }
 
-        // 6. 팝업 및 모달 관련 함수
         function openPopup(url) {
             const width = 450;
             const height = 700;
@@ -261,21 +235,14 @@
             window.open(url, 'PopupWin', `width=${width}, height=${height}, top=${top}, left=${left}, scrollbars=yes`);
         }
 
-        function logout() {
-            supabase.auth.signOut().then(() => window.location.href = 'index.html');
-        }
-
-        function openModal() {
-            document.getElementById('addModal').classList.add('active');
+        function logout() { supabase.auth.signOut().then(() => window.location.href = 'index.html'); }
+        function openModal() { 
+            document.getElementById('addModal').classList.add('active'); 
             document.getElementById('itemName').value = '';
             document.getElementById('blNo').value = '';
             document.getElementById('note').value = '';
-            setTimeout(() => document.getElementById('itemName').focus(), 100);
         }
-
-        function closeModal() {
-            document.getElementById('addModal').classList.remove('active');
-        }
+        function closeModal() { document.getElementById('addModal').classList.remove('active'); }
     </script>
 </body>
 </html>
