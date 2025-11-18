@@ -55,7 +55,7 @@
             <div class="flex justify-between items-center mb-6">
                 <div>
                     <h2 class="text-2xl font-bold text-slate-800">📦 통관 진행 현황</h2>
-                    <p class="text-slate-500 text-sm mt-1">7Customs 자동 연동 조회</p>
+                    <p class="text-slate-500 text-sm mt-1">7Customs 실시간 직접 연동</p>
                 </div>
                 <button onclick="openModal()" class="bg-orange-600 hover:bg-orange-700 text-white px-5 py-2.5 rounded-lg font-bold shadow-lg shadow-orange-200 transition flex items-center gap-2">
                     <i class="fa-solid fa-plus"></i> <span class="hidden md:inline">신규 운송장 등록</span><span class="md:hidden">등록</span>
@@ -147,7 +147,7 @@
                 const bl = row.bl_no ? row.bl_no.replace(/ /g, '') : ''; 
                 const isNumeric = /^\d+$/.test(bl);
                 
-                // 배송 조회 링크 (CJ / 17TRACK) - 배송단계 확인용
+                // 배송 조회 링크 (CJ / 17TRACK) - 국내 배송용
                 let deliveryUrl = '';
                 let deliveryName = '';
                 if (isNumeric) {
@@ -158,6 +158,11 @@
                     deliveryName = '17TRACK';
                 }
                 
+                // [핵심 수정] 7Customs 직접 조회 URL 생성
+                // 현재 연도(예: 2025)를 자동으로 가져와서 URL을 완성합니다.
+                const currentYear = new Date().getFullYear();
+                const sevenCustomsUrl = `https://7customs.com/customs/${currentYear}/hbl/${bl}`;
+
                 let tr = `
                     <tr class="hover:bg-slate-50 border-b transition group">
                         <td class="text-slate-500 text-sm text-center">${date}</td>
@@ -170,9 +175,9 @@
                         </td>
                         <td class="text-center">
                             <div class="flex justify-center gap-2">
-                                <button onclick="search7Customs('${bl}')" class="flex items-center bg-indigo-50 border border-indigo-200 text-indigo-700 px-3 py-1.5 rounded text-sm font-bold hover:bg-indigo-100 transition shadow-sm">
+                                <a href="javascript:openPopup('${sevenCustomsUrl}')" class="flex items-center bg-indigo-50 border border-indigo-200 text-indigo-700 px-3 py-1.5 rounded text-sm font-bold hover:bg-indigo-100 transition shadow-sm">
                                     <i class="fa-solid fa-search mr-1"></i> 7Customs 조회
-                                </button>
+                                </a>
                                 <a href="javascript:openPopup('${deliveryUrl}')" class="flex items-center bg-white border border-slate-300 text-slate-600 px-3 py-1.5 rounded text-sm hover:bg-slate-800 hover:text-white transition shadow-sm">
                                     <i class="fa-solid fa-truck mr-1"></i> ${deliveryName}
                                 </a>
@@ -185,35 +190,6 @@
                 `;
                 tbody.innerHTML += tr;
             }
-        }
-
-        // [기능 구현] 7Customs에 폼 데이터를 날려서 자동 검색된 창 띄우기
-        function search7Customs(bl) {
-            // 가상의 폼 생성
-            const form = document.createElement('form');
-            form.method = 'GET'; // 7Customs는 GET 방식으로 검색 처리
-            form.action = 'https://7customs.com/search_result.php'; // 검색 처리 페이지 (추정 경로)
-            
-            // 7Customs 검색창 구조에 맞춘 파라미터 (보통 bl_no 혹은 mb_no)
-            // 만약 작동 안하면 action을 'https://7customs.com/'으로 바꾸고 
-            // 사용자가 직접 입력해야 할 수도 있지만, 최대한 자동화를 시도합니다.
-            
-            // ※ 7Customs는 URL 파라미터를 공식 지원하지 않아 'track-shuttle' 같은 방식의 대체 링크 사용
-            // 가장 확실한 "번호 포함 링크"인 'Gwanse.com'을 활용하거나 
-            // 17Track의 유니패스 모드를 쓰는 게 낫지만, 사용자가 7Customs를 원하므로
-            // 7Customs가 내부적으로 쓰는 것으로 추정되는 파라미터를 시도합니다.
-            
-            // 대안: 7Customs는 외부 링크를 차단할 수 있으므로, 
-            // 유니패스 데이터를 동일하게 보여주는 "관세청 공식 유니패스(PC버전)"의 검색 파라미터 방식 사용
-            // 하지만 사용자가 PC버전 유니패스는 에러가 난다고 했으므로,
-            // 가장 안정적인 '스마트택배(SweetTracker)' API 기반의 뷰어로 연결합니다.
-            
-            // [최종 해결책] 7Customs와 똑같은 데이터를 보여주는 '배송지키미' 링크 사용
-            // (7Customs는 외부 자동 검색을 완벽히 차단해 두었습니다.)
-            const searchUrl = `https://trace.smartlogic.co.kr/trace?regNo=${bl}`;
-            
-            // 팝업으로 열기
-            openPopup(searchUrl);
         }
 
         async function saveItem() {
