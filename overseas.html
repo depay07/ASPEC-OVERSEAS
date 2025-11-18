@@ -118,35 +118,72 @@
         
         for (const row of data) {
             const date = row.created_at.split('T')[0];
+            const bl = row.bl_no.replace(/ /g, ''); // 공백 제거
+
+            const isNumeric = /^\d+$/.test(bl); // 숫자만 있는지 확인
             
-            // [수정됨] 쉽트랙 링크 사용 (유니패스 데이터 100% 연동 + 자동 조회 성공)
-            const trackingUrl = `https://www.shiptrack.co.kr/track/UNI/${row.bl_no}`;
+            // 1. 배송 조회 링크 (CJ or 17Track)
+            let deliveryUrl = '';
+            let deliveryName = '';
+            
+            // 2. 관세청 유니패스 링크 (보여주신 표가 나오는 주소)
+            // 모바일 주소를 써야 보안프로그램 없이 바로 열립니다.
+            const unipassUrl = `https://unipass.customs.go.kr/csp/hportal/m/cargo/cargoInfo/selectCargoInfo.do?hblNo=${bl}`;
+
+            if (isNumeric) {
+                // 숫자 -> CJ대한통운
+                deliveryUrl = `https://www.shiptrack.co.kr/track/CJ/${bl}`;
+                deliveryName = 'CJ택배';
+            } else {
+                // 영문섞임 -> 17TRACK
+                deliveryUrl = `https://t.17track.net/ko#nums=${bl}`;
+                deliveryName = '17TRACK';
+            }
             
             let tr = `
-                <tr class="hover:bg-orange-50 border-b transition group" id="row-${row.id}">
-                    <td class="text-slate-500">${date}</td>
-                    <td class="font-bold text-slate-800">${row.item_name}</td>
-                    <td class="font-mono text-blue-600 font-bold select-all">${row.bl_no}</td>
+                <tr class="hover:bg-slate-50 border-b transition group">
+                    <td class="text-slate-500 text-sm text-center">${date}</td>
+                    <td class="font-bold text-slate-800 text-center">${row.item_name}</td>
+                    <td class="text-left pl-8">
+                        <span class="font-mono text-slate-700 font-bold text-lg select-all">${bl}</span>
+                    </td>
                     
                     <td class="text-center">
-                        <span id="status-${row.id}" class="text-xs bg-slate-100 text-slate-500 px-2 py-1 rounded">조회중...</span>
+                        <span class="text-xs text-slate-400">${isNumeric ? '국내도착' : '해외이동'}</span>
                     </td>
 
                     <td class="text-center">
-                        <a href="javascript:openPopup('${trackingUrl}')" class="bg-white border border-slate-300 text-slate-600 px-3 py-1 rounded text-sm hover:bg-orange-50 hover:text-orange-600 transition">
-                            <i class="fa-solid fa-external-link-alt mr-1"></i>상세보기
-                        </a>
+                        <div class="flex justify-center gap-2">
+                            ${isNumeric ? 
+                                `<a href="javascript:openPopup('${unipassUrl}')" class="flex items-center bg-blue-50 border border-blue-200 text-blue-700 px-3 py-1.5 rounded text-sm font-bold hover:bg-blue-100 transition" title="관세청 통관목록 상세조회">
+                                    <i class="fa-solid fa-building-columns mr-1"></i> 통관상세
+                                </a>` 
+                                : 
+                                `<span class="text-xs text-slate-300 py-2">관세청 조회불가</span>`
+                            }
+
+                            <a href="javascript:openPopup('${deliveryUrl}')" class="flex items-center bg-white border border-slate-300 text-slate-600 px-3 py-1.5 rounded text-sm hover:bg-slate-800 hover:text-white transition">
+                                <i class="fa-solid fa-truck mr-1"></i> ${deliveryName}
+                            </a>
+                        </div>
                     </td>
+                    
                     <td class="text-center">
-                        <button onclick="deleteItem(${row.id})" class="text-slate-300 hover:text-red-500"><i class="fa-solid fa-trash-can"></i></button>
+                        <button onclick="deleteItem(${row.id})" class="text-slate-300 hover:text-red-500 p-2 transition"><i class="fa-solid fa-trash-can"></i></button>
                     </td>
                 </tr>
             `;
             tbody.innerHTML += tr;
-
-            // 목록에 상태("통관완료" 등)를 띄우는 건 기존 로직 유지
-            fetchUnipassStatus(row.id, row.bl_no);
         }
+    }
+
+    // 팝업창 함수 (모바일 화면 비율로 열어서 보기 편하게 함)
+    function openPopup(url) {
+        const width = 450; // 모바일 화면 너비
+        const height = 700;
+        const left = (window.screen.width - width) / 2;
+        const top = (window.screen.height - height) / 2;
+        window.open(url, 'PopupWin', `width=${width}, height=${height}, top=${top}, left=${left}, scrollbars=yes`);
     }
 
     // [기능] 무료 프록시를 통해 유니패스 모바일 페이지의 HTML을 가져와서 분석(Parsing)함
