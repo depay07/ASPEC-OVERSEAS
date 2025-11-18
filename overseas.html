@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>ASPEC 직구 통관 조회</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap');
+        body { font-family: 'Noto Sans KR', sans-serif; font-size: 14px; }
+        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 50; display: none; justify-content: center; align-items: center; }
+        .modal-content { background: white; width: 90%; max-width: 500px; border-radius: 8px; padding: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+        .modal.active { display: flex; }
+        th { background-color: #f1f5f9; color: #475569; font-weight: 700; padding: 12px; text-align: center; border-bottom: 2px solid #e2e8f0; }
+        td { padding: 10px; border-bottom: 1px solid #e2e8f0; color: #334155; vertical-align: middle; text-align: center; }
+        .input-box { width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; margin-top: 4px; }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800">
+
+    <div class="flex h-screen overflow-hidden">
+        <aside class="w-64 bg-slate-900 text-slate-300 flex flex-col shadow-xl z-20">
+            <div class="p-6 border-b border-slate-800">
+                <h1 class="text-xl font-bold text-white">ASPEC <span class="text-orange-500 text-xs">OVERSEAS</span></h1>
+            </div>
+            <nav class="flex-1 py-6">
+                <button class="w-full text-left px-8 py-3 bg-slate-800 text-white border-l-4 border-orange-500 font-bold flex items-center gap-3">
+                    <i class="fa-solid fa-plane-arrival"></i> 직구 통관 조회
+                </button>
+                </nav>
+            <div class="p-4 border-t border-slate-800">
+                <button onclick="logout()" class="w-full bg-slate-800 py-2 rounded text-xs hover:text-white">로그아웃</button>
+            </div>
+        </aside>
+
+        <main class="flex-1 overflow-y-auto p-8">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold text-slate-800">📦 통관 진행 현황</h2>
+                <button onclick="openModal()" class="bg-orange-600 hover:bg-orange-700 text-white px-6 py-2 rounded font-bold shadow-sm">
+                    <i class="fa-solid fa-plus mr-2"></i>신규 운송장 추가
+                </button>
+            </div>
+
+            <div class="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr>
+                            <th>등록일</th>
+                            <th>품목명 (별칭)</th>
+                            <th>B/L 번호 (운송장)</th>
+                            <th>비고</th>
+                            <th>관세청 조회</th>
+                            <th>관리</th>
+                        </tr>
+                    </thead>
+                    <tbody id="listBody">
+                        </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <div id="addModal" class="modal">
+        <div class="modal-content">
+            <div class="flex justify-between items-center mb-4 border-b pb-3">
+                <h2 class="text-xl font-bold">운송장 번호 등록</h2>
+                <button onclick="closeModal()" class="text-slate-400 hover:text-red-500"><i class="fa-solid fa-times"></i></button>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="text-sm font-bold text-slate-700">품목명 (알아보기 쉽게)</label>
+                    <input id="itemName" class="input-box" placeholder="예: 아이폰 케이스, 청소기 등">
+                </div>
+                <div>
+                    <label class="text-sm font-bold text-slate-700">H B/L (운송장번호)</label>
+                    <input id="blNo" class="input-box" placeholder="숫자만 입력 (예: 609123456789)">
+                    <p class="text-xs text-orange-500 mt-1">* 직구하신 사이트의 배송조회 번호를 입력하세요.</p>
+                </div>
+                <div>
+                    <label class="text-sm font-bold text-slate-700">비고</label>
+                    <input id="note" class="input-box">
+                </div>
+            </div>
+            <button onclick="saveItem()" class="w-full mt-6 bg-slate-800 hover:bg-slate-900 text-white py-3 rounded font-bold">저장하기</button>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 기존 ERP와 동일한 Supabase 설정
+        // ==========================================
+        const SUPABASE_URL = 'https://gqttpmdpqotrkbdbstuu.supabase.co'; 
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdxdHRwbWRwcW90cmtiZGJzdHV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMzNjU4MjIsImV4cCI6MjA3ODk0MTgyMn0.pR6dL8yU2lpugzYWpdDkQh_l5WcVO4YMlOPhMlCJmP8'; 
+        
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        // 페이지 로드 시 실행
+        window.onload = async () => {
+            // 로그인 체크
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) {
+                alert("로그인이 필요합니다.");
+                window.location.href = 'index.html'; // 로그인 페이지로 튕기기
+                return;
+            }
+            loadData();
+        };
+
+        // 데이터 불러오기
+        async function loadData() {
+            const tbody = document.getElementById('listBody');
+            tbody.innerHTML = '<tr><td colspan="6" class="p-4">로딩중...</td></tr>';
+
+            // Supabase에서 overseas_items 테이블 조회
+            const { data, error } = await supabase
+                .from('overseas_items')
+                .select('*')
+                .order('created_at', { ascending: false });
+
+            if (error) {
+                console.error(error);
+                tbody.innerHTML = '<tr><td colspan="6" class="p-4">데이터를 불러오지 못했습니다. (테이블 생성 필요)</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = '';
+            if (!data || data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="p-4 text-slate-400">등록된 통관 내역이 없습니다.</td></tr>';
+                return;
+            }
+
+            data.forEach(row => {
+                const date = row.created_at.split('T')[0];
+                // 관세청 유니패스 직접 조회 링크 (가장 확실한 방법)
+                const trackingLink = `https://unipass.customs.go.kr/csp/index.do?tgMenuId=MYC_MNU_00000450&hblNo=${row.bl_no}`;
+                
+                let tr = `
+                    <tr class="hover:bg-slate-50">
+                        <td>${date}</td>
+                        <td class="font-bold text-slate-700">${row.item_name}</td>
+                        <td class="font-mono text-blue-600 text-lg">${row.bl_no}</td>
+                        <td class="text-sm text-slate-500">${row.note || '-'}</td>
+                        <td>
+                            <a href="${trackingLink}" target="_blank" class="bg-cyan-600 hover:bg-cyan-700 text-white px-3 py-1 rounded text-sm font-bold shadow-sm inline-flex items-center">
+                                <i class="fa-solid fa-search mr-2"></i> 진행상황 조회
+                            </a>
+                        </td>
+                        <td>
+                            <button onclick="deleteItem(${row.id})" class="text-slate-400 hover:text-red-500 transition">
+                                <i class="fa-solid fa-trash fa-lg"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+                tbody.innerHTML += tr;
+            });
+        }
+
+        // 신규 등록
+        async function saveItem() {
+            const name = document.getElementById('itemName').value;
+            const bl = document.getElementById('blNo').value;
+            const note = document.getElementById('note').value;
+
+            if (!name || !bl) {
+                alert("품목명과 운송장번호(H B/L)는 필수입니다.");
+                return;
+            }
+
+            const { error } = await supabase
+                .from('overseas_items')
+                .insert([{ item_name: name, bl_no: bl, note: note }]);
+
+            if (error) {
+                alert("저장 실패: " + error.message);
+            } else {
+                alert("등록되었습니다.");
+                closeModal();
+                loadData();
+            }
+        }
+
+        // 삭제
+        async function deleteItem(id) {
+            if (confirm("통관이 완료되어 수령하셨나요?\n목록에서 삭제합니다.")) {
+                const { error } = await supabase.from('overseas_items').delete().eq('id', id);
+                if (!error) loadData();
+            }
+        }
+
+        function openModal() { 
+            document.getElementById('addModal').classList.add('active'); 
+            document.getElementById('itemName').value = '';
+            document.getElementById('blNo').value = '';
+            document.getElementById('note').value = '';
+        }
+        function closeModal() { document.getElementById('addModal').classList.remove('active'); }
+        function logout() { supabase.auth.signOut().then(()=>window.location.href='index.html'); }
+    </script>
+</body>
+</html>
