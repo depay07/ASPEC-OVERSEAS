@@ -55,7 +55,7 @@
             <div class="flex justify-between items-center mb-6">
                 <div>
                     <h2 class="text-2xl font-bold text-slate-800">📦 통관 진행 현황</h2>
-                    <p class="text-slate-500 text-sm mt-1">관세청 및 택배사 실시간 연동</p>
+                    <p class="text-slate-500 text-sm mt-1">7Customs 및 글로벌 배송 연동</p>
                 </div>
                 <button onclick="openModal()" class="bg-orange-600 hover:bg-orange-700 text-white px-5 py-2.5 rounded-lg font-bold shadow-lg shadow-orange-200 transition flex items-center gap-2">
                     <i class="fa-solid fa-plus"></i> <span class="hidden md:inline">신규 운송장 등록</span><span class="md:hidden">등록</span>
@@ -69,7 +69,7 @@
                             <th width="12%">등록일</th>
                             <th width="20%">품목명 (별칭)</th>
                             <th width="25%">운송장 번호 (H B/L)</th>
-                            <th width="10%">상태</th>
+                            <th width="10%">구분</th>
                             <th width="23%">상세 조회</th>
                             <th width="10%">관리</th>
                         </tr>
@@ -131,7 +131,7 @@
             }
         });
 
-        // 3. 데이터 로드 (수정됨)
+        // 3. 데이터 로드
         async function loadData() {
             const tbody = document.getElementById('listBody');
             if (!tbody) return;
@@ -152,21 +152,19 @@
                 const date = row.created_at.split('T')[0];
                 const bl = row.bl_no ? row.bl_no.replace(/ /g, '') : ''; 
 
-                // 숫자만 있는지 여부 체크 (배송사 구분에만 사용)
+                // 숫자만 있는지 여부 체크
                 const isNumeric = /^\d+$/.test(bl);
                 
-                // 링크 설정
+                // 배송 조회 링크 (CJ / 17TRACK)
                 let deliveryUrl = '';
                 let deliveryName = '';
-                
-                // [수정됨] 유니패스 버튼은 이제 조건 없이 무조건 생성됩니다.
-                const unipassUrl = `https://unipass.customs.go.kr/csp/hportal/m/cargo/cargoInfo/selectCargoInfo.do?hblNo=${bl}`;
 
-                // 배송사 링크 구분 (숫자면 CJ, 영문섞이면 17Track)
                 if (isNumeric) {
+                    // 숫자만 있음 -> CJ대한통운 (ShipTrack 사용: CJ는 이 링크가 가장 정확함)
                     deliveryUrl = `https://www.shiptrack.co.kr/track/CJ/${bl}`;
-                    deliveryName = 'CJ택배';
+                    deliveryName = 'CJ 택배';
                 } else {
+                    // 영문 섞임 -> 17TRACK (글로벌 추적)
                     deliveryUrl = `https://t.17track.net/ko#nums=${bl}`;
                     deliveryName = '17TRACK';
                 }
@@ -185,11 +183,11 @@
 
                         <td class="text-center">
                             <div class="flex justify-center gap-2">
-                                <a href="javascript:openPopup('${unipassUrl}')" class="flex items-center bg-blue-50 border border-blue-200 text-blue-700 px-3 py-1.5 rounded text-sm font-bold hover:bg-blue-100 transition" title="관세청 통관목록 상세조회">
-                                    <i class="fa-solid fa-building-columns mr-1"></i> 통관상세
-                                </a>
+                                <button onclick="copyAndOpen7Customs('${bl}')" class="flex items-center bg-indigo-50 border border-indigo-200 text-indigo-700 px-3 py-1.5 rounded text-sm font-bold hover:bg-indigo-100 transition shadow-sm" title="번호 복사 후 7Customs 열기">
+                                    <i class="fa-solid fa-clipboard-check mr-1"></i> 7Customs 조회
+                                </button>
 
-                                <a href="javascript:openPopup('${deliveryUrl}')" class="flex items-center bg-white border border-slate-300 text-slate-600 px-3 py-1.5 rounded text-sm hover:bg-slate-800 hover:text-white transition">
+                                <a href="javascript:openPopup('${deliveryUrl}')" class="flex items-center bg-white border border-slate-300 text-slate-600 px-3 py-1.5 rounded text-sm hover:bg-slate-800 hover:text-white transition shadow-sm">
                                     <i class="fa-solid fa-truck mr-1"></i> ${deliveryName}
                                 </a>
                             </div>
@@ -204,6 +202,19 @@
             }
         }
 
+        // [새로운 기능] 번호를 복사하고 7customs를 여는 함수
+        function copyAndOpen7Customs(bl) {
+            // 1. 클립보드에 운송장 번호 복사
+            navigator.clipboard.writeText(bl).then(() => {
+                alert(`운송장 번호 [${bl}]가 복사되었습니다.\n7Customs 검색창에 붙여넣기(Ctrl+V) 하세요.`);
+                // 2. 7Customs 사이트 열기
+                openPopup('https://7customs.com/');
+            }).catch(err => {
+                // 복사 실패 시 그냥 사이트만 염
+                openPopup('https://7customs.com/');
+            });
+        }
+
         async function saveItem() {
             const name = document.getElementById('itemName').value;
             const bl = document.getElementById('blNo').value;
@@ -211,8 +222,7 @@
 
             if (!name || !bl) { return alert("정보를 입력해주세요."); }
             
-            // [수정됨] 숫자와 영문만 남기되, 대소문자 변환 없이 그대로 저장
-            const cleanBl = bl.replace(/[^a-zA-Z0-9]/g, '');
+            const cleanBl = bl.replace(/[^a-zA-Z0-9]/g, ''); // 특수문자만 제거
 
             const { error } = await supabase.from('overseas_items').insert([{ item_name: name, bl_no: cleanBl, note: note }]);
 
