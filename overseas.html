@@ -116,11 +116,11 @@
 
         tbody.innerHTML = '';
         
-        // 데이터를 먼저 화면에 그립니다.
         for (const row of data) {
             const date = row.created_at.split('T')[0];
-            // [핵심 1] 유니패스 모바일 페이지 링크 (PC보다 훨씬 잘 열리고 파라미터가 잘 먹힘)
-            const mobileLink = `https://unipass.customs.go.kr/csp/hportal/m/cargo/cargoInfo/selectCargoInfo.do?hblNo=${row.bl_no}`;
+            
+            // [수정됨] 쉽트랙 링크 사용 (유니패스 데이터 100% 연동 + 자동 조회 성공)
+            const trackingUrl = `https://www.shiptrack.co.kr/track/UNI/${row.bl_no}`;
             
             let tr = `
                 <tr class="hover:bg-orange-50 border-b transition group" id="row-${row.id}">
@@ -130,11 +130,10 @@
                     
                     <td class="text-center">
                         <span id="status-${row.id}" class="text-xs bg-slate-100 text-slate-500 px-2 py-1 rounded">조회중...</span>
-                        <div id="time-${row.id}" class="text-[10px] text-slate-400 mt-1"></div>
                     </td>
 
                     <td class="text-center">
-                        <a href="javascript:openPopup('${mobileLink}')" class="bg-white border border-slate-300 text-slate-600 px-3 py-1 rounded text-sm hover:bg-orange-50 hover:text-orange-600 transition">
+                        <a href="javascript:openPopup('${trackingUrl}')" class="bg-white border border-slate-300 text-slate-600 px-3 py-1 rounded text-sm hover:bg-orange-50 hover:text-orange-600 transition">
                             <i class="fa-solid fa-external-link-alt mr-1"></i>상세보기
                         </a>
                     </td>
@@ -145,7 +144,7 @@
             `;
             tbody.innerHTML += tr;
 
-            // [핵심 2] 화면을 그린 후, 비동기로 유니패스 데이터를 긁어옵니다.
+            // 목록에 상태("통관완료" 등)를 띄우는 건 기존 로직 유지
             fetchUnipassStatus(row.id, row.bl_no);
         }
     }
