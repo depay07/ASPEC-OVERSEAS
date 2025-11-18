@@ -1,116 +1,53 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-    <meta charset="UTF-8">
-    <title>ASPEC 직구 통관 조회</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap');
-        body { font-family: 'Noto Sans KR', sans-serif; font-size: 14px; }
-        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 50; display: none; justify-content: center; align-items: center; }
-        .modal-content { background: white; width: 90%; max-width: 500px; border-radius: 8px; padding: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
-        .modal.active { display: flex; }
-        th { background-color: #f1f5f9; color: #475569; font-weight: 700; padding: 12px; text-align: center; border-bottom: 2px solid #e2e8f0; }
-        td { padding: 10px; border-bottom: 1px solid #e2e8f0; color: #334155; vertical-align: middle; text-align: center; }
-        .input-box { width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 4px; margin-top: 4px; }
-    </style>
-</head>
-<body class="bg-slate-100 text-slate-800">
+<script>
+    // 1. Supabase 설정
+    const SUPABASE_URL = 'https://rfiloowzyvrfzmygpjra.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJmaWxvb3d6eXZyZnpteWdwanJhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM0MjE1NDgsImV4cCI6MjA3ODk5NzU0OH0.m6OfTzgdc3YLDRWwE3ZvMAXLZYtsygcWkKxKB8HCezg';
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    <div class="flex h-screen overflow-hidden">
-        <aside class="w-64 bg-slate-900 text-slate-300 flex flex-col shadow-xl z-20">
-            <div class="p-6 border-b border-slate-800">
-                <h1 class="text-xl font-bold text-white">ASPEC <span class="text-orange-500 text-xs">OVERSEAS</span></h1>
-            </div>
-            <nav class="flex-1 py-6">
-                <button class="w-full text-left px-8 py-3 bg-slate-800 text-white border-l-4 border-orange-500 font-bold flex items-center gap-3">
-                    <i class="fa-solid fa-plane-arrival"></i> 직구 통관 조회
-                </button>
-                </nav>
-            <div class="p-4 border-t border-slate-800">
-                <button onclick="logout()" class="w-full bg-slate-800 py-2 rounded text-xs hover:text-white">로그아웃</button>
-            </div>
-        </aside>
+    // 2. 페이지 로딩 완료 시 실행 (안전 장치 추가됨)
+    document.addEventListener('DOMContentLoaded', async () => {
+        try {
+            // 세션 체크
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) {
+                alert("로그인이 필요합니다.");
+                window.location.href = 'index.html';
+                return;
+            }
 
-        <main class="flex-1 overflow-y-auto p-8">
-            <div class="flex justify-between items-center mb-6">
-                <h2 class="text-2xl font-bold text-slate-800">📦 통관 진행 현황</h2>
-                <button onclick="openModal()" class="bg-orange-600 hover:bg-orange-700 text-white px-6 py-2 rounded font-bold shadow-sm">
-                    <i class="fa-solid fa-plus mr-2"></i>신규 운송장 추가
-                </button>
-            </div>
+            // 이메일 표시 (에러 방지 처리)
+            const emailEl = document.getElementById('userEmail');
+            if (emailEl && session.user) {
+                emailEl.innerText = session.user.email;
+            }
 
-            <div class="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
-                <table class="w-full text-left border-collapse">
-                    <thead>
-                        <tr>
-                            <th>등록일</th>
-                            <th>품목명 (별칭)</th>
-                            <th>B/L 번호 (운송장)</th>
-                            <th>비고</th>
-                            <th>관세청 조회</th>
-                            <th>관리</th>
-                        </tr>
-                    </thead>
-                    <tbody id="listBody">
-                        </tbody>
-                </table>
-            </div>
-        </main>
-    </div>
+            // [핵심] 여기서 데이터를 불러옵니다.
+            await loadData();
 
-    <div id="addModal" class="modal">
-        <div class="modal-content">
-            <div class="flex justify-between items-center mb-4 border-b pb-3">
-                <h2 class="text-xl font-bold">운송장 번호 등록</h2>
-                <button onclick="closeModal()" class="text-slate-400 hover:text-red-500"><i class="fa-solid fa-times"></i></button>
-            </div>
-            <div class="space-y-4">
-                <div>
-                    <label class="text-sm font-bold text-slate-700">품목명 (알아보기 쉽게)</label>
-                    <input id="itemName" class="input-box" placeholder="예: 아이폰 케이스, 청소기 등">
-                </div>
-                <div>
-                    <label class="text-sm font-bold text-slate-700">H B/L (운송장번호)</label>
-                    <input id="blNo" class="input-box" placeholder="숫자만 입력 (예: 609123456789)">
-                    <p class="text-xs text-orange-500 mt-1">* 직구하신 사이트의 배송조회 번호를 입력하세요.</p>
-                </div>
-                <div>
-                    <label class="text-sm font-bold text-slate-700">비고</label>
-                    <input id="note" class="input-box">
-                </div>
-            </div>
-            <button onclick="saveItem()" class="w-full mt-6 bg-slate-800 hover:bg-slate-900 text-white py-3 rounded font-bold">저장하기</button>
-        </div>
-    </div>
+        } catch (error) {
+            console.error("초기화 오류:", error);
+            // 에러가 나도 데이터 로딩은 한 번 더 시도
+            loadData(); 
+        }
+    });
 
-    <script>
-        // ==========================================
-        // 기존 ERP와 동일한 Supabase 설정
-        // ==========================================
-        const SUPABASE_URL = 'https://rfiloowzyvrfzmygpjra.supabase.co'; 
-        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJmaWxvb3d6eXZyZnpteWdwanJhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM0MjE1NDgsImV4cCI6MjA3ODk5NzU0OH0.m6OfTzgdc3YLDRWwE3ZvMAXLZYtsygcWkKxKB8HCezg'; 
-        
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-        // 페이지 로드 시 실행
-        window.onload = async () => {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) { window.location.href = 'index.html'; return; }
-        document.getElementById('userEmail').innerText = session.user.email;
-        loadData();
-    };
-
+    // 3. 데이터 불러오기 및 그리기
     async function loadData() {
         const tbody = document.getElementById('listBody');
-        tbody.innerHTML = '<tr><td colspan="6" class="p-8 text-center"><i class="fa-solid fa-spinner fa-spin"></i> 로딩중...</td></tr>';
+        // 로딩 표시가 깜빡거리는 것을 방지하기 위해, 데이터가 없을 때만 로딩 표시
+        if (!tbody.innerHTML.trim()) {
+            tbody.innerHTML = '<tr><td colspan="6" class="p-8 text-center"><i class="fa-solid fa-spinner fa-spin"></i> 로딩중...</td></tr>';
+        }
 
         const { data, error } = await supabase.from('overseas_items').select('*').order('created_at', { ascending: false });
 
+        if (error) {
+            console.error("데이터 로드 실패:", error);
+            return;
+        }
+
         if (!data || data.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="p-8 text-center">내역이 없습니다.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" class="p-8 text-center">등록된 내역이 없습니다.</td></tr>';
             return;
         }
 
@@ -118,24 +55,20 @@
         
         for (const row of data) {
             const date = row.created_at.split('T')[0];
-            const bl = row.bl_no.replace(/ /g, ''); // 공백 제거
+            const bl = row.bl_no ? row.bl_no.replace(/ /g, '') : ''; // 공백 제거 및 null 방지
 
             const isNumeric = /^\d+$/.test(bl); // 숫자만 있는지 확인
             
-            // 1. 배송 조회 링크 (CJ or 17Track)
+            // 링크 설정
             let deliveryUrl = '';
             let deliveryName = '';
-            
-            // 2. 관세청 유니패스 링크 (보여주신 표가 나오는 주소)
-            // 모바일 주소를 써야 보안프로그램 없이 바로 열립니다.
+            // 유니패스 모바일 링크
             const unipassUrl = `https://unipass.customs.go.kr/csp/hportal/m/cargo/cargoInfo/selectCargoInfo.do?hblNo=${bl}`;
 
             if (isNumeric) {
-                // 숫자 -> CJ대한통운
                 deliveryUrl = `https://www.shiptrack.co.kr/track/CJ/${bl}`;
                 deliveryName = 'CJ택배';
             } else {
-                // 영문섞임 -> 17TRACK
                 deliveryUrl = `https://t.17track.net/ko#nums=${bl}`;
                 deliveryName = '17TRACK';
             }
@@ -159,7 +92,7 @@
                                     <i class="fa-solid fa-building-columns mr-1"></i> 통관상세
                                 </a>` 
                                 : 
-                                `<span class="text-xs text-slate-300 py-2">관세청 조회불가</span>`
+                                `<span class="text-xs text-slate-300 py-2 select-none">관세청 조회불가</span>`
                             }
 
                             <a href="javascript:openPopup('${deliveryUrl}')" class="flex items-center bg-white border border-slate-300 text-slate-600 px-3 py-1.5 rounded text-sm hover:bg-slate-800 hover:text-white transition">
@@ -177,129 +110,59 @@
         }
     }
 
-    // 팝업창 함수 (모바일 화면 비율로 열어서 보기 편하게 함)
+    // 4. 신규 저장
+    async function saveItem() {
+        const name = document.getElementById('itemName').value;
+        const bl = document.getElementById('blNo').value;
+        const note = document.getElementById('note').value;
+
+        if (!name || !bl) {
+            alert("품목명과 운송장번호를 입력해주세요.");
+            return;
+        }
+        // 숫자, 영문만 남기고 공백 제거
+        const cleanBl = bl.replace(/[^a-zA-Z0-9]/g, '');
+
+        const { error } = await supabase.from('overseas_items').insert([{ item_name: name, bl_no: cleanBl, note: note }]);
+
+        if (error) {
+            alert("저장 실패: " + error.message);
+        } else {
+            closeModal();
+            loadData(); // 저장 후 목록 갱신
+        }
+    }
+
+    // 5. 삭제
+    async function deleteItem(id) {
+        if (confirm("삭제하시겠습니까?")) {
+            const { error } = await supabase.from('overseas_items').delete().eq('id', id);
+            if (!error) loadData();
+        }
+    }
+
+    // 6. 팝업 및 모달 관련 함수
     function openPopup(url) {
-        const width = 450; // 모바일 화면 너비
+        const width = 450;
         const height = 700;
         const left = (window.screen.width - width) / 2;
         const top = (window.screen.height - height) / 2;
         window.open(url, 'PopupWin', `width=${width}, height=${height}, top=${top}, left=${left}, scrollbars=yes`);
     }
 
-    // [기능] 무료 프록시를 통해 유니패스 모바일 페이지의 HTML을 가져와서 분석(Parsing)함
-    async function fetchUnipassStatus(id, blNo) {
-        const statusEl = document.getElementById(`status-${id}`);
-        const timeEl = document.getElementById(`time-${id}`);
-        
-        // 유니패스 모바일 주소 (여기가 데이터를 가져오기 가장 좋습니다)
-        const targetUrl = `https://unipass.customs.go.kr/csp/hportal/m/cargo/cargoInfo/selectCargoInfo.do?hblNo=${blNo}`;
-        // 우회 접속용 프록시 URL (CORS 해결)
-        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
-
-        try {
-            const response = await fetch(proxyUrl);
-            const json = await response.json();
-            const htmlText = json.contents; // 프록시가 가져온 HTML 원본
-
-            // HTML을 분석하기 위한 파서 생성
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(htmlText, "text/html");
-
-            // 유니패스 모바일 페이지 구조상 '처리단계'가 있는 위치를 찾습니다.
-            // (보통 테이블의 가장 첫 번째 줄이나 특정 클래스에 있습니다)
-            // ※ 유니패스 구조 변경 시 수정이 필요할 수 있습니다.
-            
-            // 예시: 모바일 페이지의 결과 테이블 첫 번째 행 찾기
-            const resultTable = doc.querySelector('table'); // 첫번째 테이블이 보통 결과임
-            
-            if (htmlText.includes("조회된 데이터가 없습니다")) {
-                statusEl.innerText = "정보 없음";
-                statusEl.className = "text-xs bg-red-100 text-red-600 px-2 py-1 rounded font-bold";
-            } else {
-                // 가장 최근 진행상태 추출 (HTML 구조 파싱 시도)
-                // 모바일 페이지에서 '통관진행상태' 같은 키워드 뒤의 값을 찾거나
-                // 테이블의 첫번째 데이터 행을 찾습니다.
-                // 여기서는 간단히 텍스트 매칭으로 중요 키워드를 찾습니다.
-                
-                // '특송물품 반출', '통관목록심사완료' 등 키워드가 있는지 확인
-                let foundStatus = "진행중";
-                let lastTime = "-";
-
-                // 간단한 파싱 로직 (모바일 페이지 테이블 구조 기반)
-                const tds = doc.querySelectorAll('td');
-                if(tds.length > 0) {
-                     // 보통 상단에 현재 상태가 요약되어 나옴
-                     // 정확한 파싱을 위해선 실제 HTML 구조 확인이 필요하나, 
-                     // '목록통관특송물품 반출' 등의 텍스트를 포함하는지 검사
-                     if(htmlText.includes("반출신고")) foundStatus = "반출 완료 (배송시작)";
-                     else if(htmlText.includes("반출")) foundStatus = "반출 완료";
-                     else if(htmlText.includes("통관목록심사완료")) foundStatus = "통관 심사 완료";
-                     else if(htmlText.includes("반입신고")) foundStatus = "세관 반입 (입항)";
-                     else if(htmlText.includes("입항보고")) foundStatus = "입항 완료";
-                     else if(htmlText.includes("적재화물목록 심사완료")) foundStatus = "적재 목록 심사";
-                     
-                     // 색상 변경
-                     if(foundStatus.includes("반출")) {
-                         statusEl.className = "text-xs bg-green-100 text-green-700 px-2 py-1 rounded font-bold";
-                     } else {
-                         statusEl.className = "text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded font-bold";
-                     }
-                }
-                
-                statusEl.innerText = foundStatus;
-                // 시간은 파싱이 까다로워 일단 '상세보기' 유도
-                timeEl.innerText = "(상세보기 클릭)"; 
-            }
-
-        } catch (e) {
-            console.error(e);
-            statusEl.innerText = "조회 실패";
-        }
+    function logout() {
+        supabase.auth.signOut().then(() => window.location.href = 'index.html');
     }
 
-    // 팝업창 예쁘게 띄우기
-    function openPopup(url) {
-        const width = 500;
-        const height = 700;
-        const left = (window.screen.width - width) / 2;
-        const top = (window.screen.height - height) / 2;
-        window.open(url, 'UnipassPopup', `width=${width}, height=${height}, top=${top}, left=${left}, scrollbars=yes`);
+    function openModal() {
+        document.getElementById('addModal').classList.add('active');
+        document.getElementById('itemName').value = '';
+        document.getElementById('blNo').value = '';
+        document.getElementById('note').value = '';
+        setTimeout(() => document.getElementById('itemName').focus(), 100);
     }
 
-    // ... (나머지 saveItem, deleteItem 함수는 기존과 동일) ...
-    async function saveItem() {
-            const name = document.getElementById('itemName').value;
-            const bl = document.getElementById('blNo').value;
-            const note = document.getElementById('note').value;
-
-            if (!name || !bl) {
-                alert("품목명과 운송장번호(H B/L)는 필수입니다.");
-                return;
-            }
-
-            const { error } = await supabase
-                .from('overseas_items')
-                .insert([{ item_name: name, bl_no: bl, note: note }]);
-
-            if (error) {
-                alert("저장 실패: " + error.message);
-            } else {
-                alert("등록되었습니다.");
-                closeModal();
-                loadData();
-            }
-        }
-
-    async function deleteItem(id) {
-            if (confirm("통관이 완료되어 수령하셨나요?\n목록에서 삭제합니다.")) {
-                const { error } = await supabase.from('overseas_items').delete().eq('id', id);
-                if (!error) loadData();
-            }
-        }
-
-    function openModal() { document.getElementById('addModal').classList.add('active'); }
-    function closeModal() { document.getElementById('addModal').classList.remove('active'); }
-    function logout() { supabase.auth.signOut().then(()=>window.location.href='index.html'); }
-    </script>
-</body>
-</html>
+    function closeModal() {
+        document.getElementById('addModal').classList.remove('active');
+    }
+</script>
