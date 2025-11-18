@@ -1,168 +1,281 @@
-<script>
-    // 1. Supabase 설정
-    const SUPABASE_URL = 'https://rfiloowzyvrfzmygpjra.supabase.co';
-    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJmaWxvb3d6eXZyZnpteWdwanJhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM0MjE1NDgsImV4cCI6MjA3ODk5NzU0OH0.m6OfTzgdc3YLDRWwE3ZvMAXLZYtsygcWkKxKB8HCezg';
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASPEC 직구 통관 조회</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap');
+        body { font-family: 'Noto Sans KR', sans-serif; font-size: 14px; }
+        
+        /* 모달 스타일 */
+        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 50; display: none; justify-content: center; align-items: center; }
+        .modal-content { background: white; width: 90%; max-width: 450px; border-radius: 12px; padding: 24px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); transform: scale(0.95); transition: transform 0.2s; }
+        .modal.active { display: flex; }
+        .modal.active .modal-content { transform: scale(1); }
 
-    // 2. 페이지 로딩 완료 시 실행 (안전 장치 추가됨)
-    document.addEventListener('DOMContentLoaded', async () => {
-        try {
-            // 세션 체크
-            const { data: { session } } = await supabase.auth.getSession();
-            if (!session) {
-                alert("로그인이 필요합니다.");
-                window.location.href = 'index.html';
+        th { background-color: #f8fafc; color: #475569; font-weight: 700; padding: 12px; text-align: center; border-bottom: 2px solid #e2e8f0; font-size: 13px; }
+        td { padding: 12px; border-bottom: 1px solid #e2e8f0; color: #334155; vertical-align: middle; text-align: center; }
+        .input-box { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; margin-top: 6px; font-size: 14px; }
+        .input-box:focus { outline: none; border-color: #f97316; ring: 2px solid #f97316; }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800">
+
+    <div class="flex h-screen overflow-hidden">
+        <aside class="w-64 bg-slate-900 text-slate-300 flex flex-col shadow-xl z-20 hidden md:flex">
+            <div class="p-6 border-b border-slate-800">
+                <h1 class="text-xl font-bold text-white tracking-wider">ASPEC <span class="text-orange-500 text-xs align-top">OVERSEAS</span></h1>
+            </div>
+            <nav class="flex-1 py-6 space-y-1">
+                <div class="px-4 text-xs font-bold text-slate-500 uppercase mb-2">메인 메뉴</div>
+                <button class="w-full text-left px-6 py-3 bg-slate-800 text-white border-r-4 border-orange-500 font-bold flex items-center gap-3 transition">
+                    <i class="fa-solid fa-box-open w-5"></i> 직구 통관 조회
+                </button>
+            </nav>
+            <div class="p-4 border-t border-slate-800">
+                <div class="text-xs text-slate-500 mb-2 px-2">로그인 계정</div>
+                <div id="userEmail" class="text-sm text-white font-bold px-2 mb-4 truncate">...</div>
+                <button onclick="logout()" class="w-full bg-slate-700 py-2 rounded text-sm hover:bg-red-500 hover:text-white transition">
+                    <i class="fa-solid fa-right-from-bracket mr-2"></i>로그아웃
+                </button>
+            </div>
+        </aside>
+
+        <main class="flex-1 overflow-y-auto p-4 md:p-8">
+            <div class="md:hidden flex justify-between items-center mb-6">
+                <h1 class="text-lg font-bold text-slate-800">ASPEC OVERSEAS</h1>
+                <button onclick="logout()" class="text-xs bg-slate-200 px-3 py-1 rounded">로그아웃</button>
+            </div>
+
+            <div class="flex justify-between items-center mb-6">
+                <div>
+                    <h2 class="text-2xl font-bold text-slate-800">📦 통관 진행 현황</h2>
+                    <p class="text-slate-500 text-sm mt-1">관세청 및 택배사 실시간 연동</p>
+                </div>
+                <button onclick="openModal()" class="bg-orange-600 hover:bg-orange-700 text-white px-5 py-2.5 rounded-lg font-bold shadow-lg shadow-orange-200 transition flex items-center gap-2">
+                    <i class="fa-solid fa-plus"></i> <span class="hidden md:inline">신규 운송장 등록</span><span class="md:hidden">등록</span>
+                </button>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden overflow-x-auto">
+                <table class="w-full text-left border-collapse min-w-[800px]">
+                    <thead>
+                        <tr>
+                            <th width="12%">등록일</th>
+                            <th width="20%">품목명 (별칭)</th>
+                            <th width="25%">운송장 번호 (H B/L)</th>
+                            <th width="10%">상태</th>
+                            <th width="23%">상세 조회</th>
+                            <th width="10%">관리</th>
+                        </tr>
+                    </thead>
+                    <tbody id="listBody">
+                        </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <div id="addModal" class="modal">
+        <div class="modal-content">
+            <div class="flex justify-between items-center mb-6 border-b pb-4">
+                <h2 class="text-xl font-bold text-slate-800">새 물품 등록</h2>
+                <button onclick="closeModal()" class="text-slate-400 hover:text-red-500 transition"><i class="fa-solid fa-times text-xl"></i></button>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="text-sm font-bold text-slate-700">품목명 <span class="text-red-500">*</span></label>
+                    <input id="itemName" class="input-box" placeholder="예: 다이슨 청소기">
+                </div>
+                <div>
+                    <label class="text-sm font-bold text-slate-700">운송장 번호 (H B/L) <span class="text-red-500">*</span></label>
+                    <input id="blNo" class="input-box font-mono" placeholder="숫자 또는 영문 운송장번호">
+                    <p class="text-xs text-orange-500 mt-1"><i class="fa-solid fa-info-circle"></i> 쇼핑몰에서 받은 번호를 입력하세요.</p>
+                </div>
+                <div>
+                    <label class="text-sm font-bold text-slate-700">비고</label>
+                    <input id="note" class="input-box" placeholder="메모 사항">
+                </div>
+            </div>
+            <button onclick="saveItem()" class="w-full mt-8 bg-slate-900 hover:bg-black text-white py-3 rounded-lg font-bold transition">저장하기</button>
+        </div>
+    </div>
+
+    <script>
+        // 1. Supabase 설정 (보내주신 새 키 적용됨)
+        const SUPABASE_URL = 'https://rfiloowzyvrfzmygpjra.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJmaWxvb3d6eXZyZnpteWdwanJhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM0MjE1NDgsImV4cCI6MjA3ODk5NzU0OH0.m6OfTzgdc3YLDRWwE3ZvMAXLZYtsygcWkKxKB8HCezg';
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        // 2. 페이지 로딩 완료 시 실행
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                // 세션 체크
+                const { data: { session } } = await supabase.auth.getSession();
+                if (!session) {
+                    alert("로그인이 필요합니다.");
+                    window.location.href = 'index.html';
+                    return;
+                }
+
+                // 이메일 표시
+                const emailEl = document.getElementById('userEmail');
+                if (emailEl && session.user) {
+                    emailEl.innerText = session.user.email;
+                }
+
+                // 데이터 불러오기
+                await loadData();
+
+            } catch (error) {
+                console.error("초기화 오류:", error);
+                loadData(); 
+            }
+        });
+
+        // 3. 데이터 불러오기 및 그리기
+        async function loadData() {
+            const tbody = document.getElementById('listBody');
+            if (!tbody) return; // 에러 방지
+
+            // 로딩 표시
+            if (!tbody.innerHTML.trim()) {
+                tbody.innerHTML = '<tr><td colspan="6" class="p-8 text-center"><i class="fa-solid fa-spinner fa-spin"></i> 로딩중...</td></tr>';
+            }
+
+            const { data, error } = await supabase.from('overseas_items').select('*').order('created_at', { ascending: false });
+
+            if (error) {
+                console.error("데이터 로드 실패:", error);
+                tbody.innerHTML = '<tr><td colspan="6" class="p-8 text-center text-red-500">데이터를 불러오지 못했습니다.</td></tr>';
                 return;
             }
 
-            // 이메일 표시 (에러 방지 처리)
-            const emailEl = document.getElementById('userEmail');
-            if (emailEl && session.user) {
-                emailEl.innerText = session.user.email;
+            if (!data || data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="p-8 text-center">등록된 내역이 없습니다.</td></tr>';
+                return;
             }
 
-            // [핵심] 여기서 데이터를 불러옵니다.
-            await loadData();
-
-        } catch (error) {
-            console.error("초기화 오류:", error);
-            // 에러가 나도 데이터 로딩은 한 번 더 시도
-            loadData(); 
-        }
-    });
-
-    // 3. 데이터 불러오기 및 그리기
-    async function loadData() {
-        const tbody = document.getElementById('listBody');
-        // 로딩 표시가 깜빡거리는 것을 방지하기 위해, 데이터가 없을 때만 로딩 표시
-        if (!tbody.innerHTML.trim()) {
-            tbody.innerHTML = '<tr><td colspan="6" class="p-8 text-center"><i class="fa-solid fa-spinner fa-spin"></i> 로딩중...</td></tr>';
-        }
-
-        const { data, error } = await supabase.from('overseas_items').select('*').order('created_at', { ascending: false });
-
-        if (error) {
-            console.error("데이터 로드 실패:", error);
-            return;
-        }
-
-        if (!data || data.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="p-8 text-center">등록된 내역이 없습니다.</td></tr>';
-            return;
-        }
-
-        tbody.innerHTML = '';
-        
-        for (const row of data) {
-            const date = row.created_at.split('T')[0];
-            const bl = row.bl_no ? row.bl_no.replace(/ /g, '') : ''; // 공백 제거 및 null 방지
-
-            const isNumeric = /^\d+$/.test(bl); // 숫자만 있는지 확인
+            tbody.innerHTML = '';
             
-            // 링크 설정
-            let deliveryUrl = '';
-            let deliveryName = '';
-            // 유니패스 모바일 링크
-            const unipassUrl = `https://unipass.customs.go.kr/csp/hportal/m/cargo/cargoInfo/selectCargoInfo.do?hblNo=${bl}`;
+            for (const row of data) {
+                const date = row.created_at.split('T')[0];
+                const bl = row.bl_no ? row.bl_no.replace(/ /g, '') : ''; // 공백 제거
 
-            if (isNumeric) {
-                deliveryUrl = `https://www.shiptrack.co.kr/track/CJ/${bl}`;
-                deliveryName = 'CJ택배';
+                const isNumeric = /^\d+$/.test(bl); // 숫자만 있는지 확인
+                
+                // 링크 설정
+                let deliveryUrl = '';
+                let deliveryName = '';
+                // 유니패스 모바일 링크
+                const unipassUrl = `https://unipass.customs.go.kr/csp/hportal/m/cargo/cargoInfo/selectCargoInfo.do?hblNo=${bl}`;
+
+                if (isNumeric) {
+                    deliveryUrl = `https://www.shiptrack.co.kr/track/CJ/${bl}`;
+                    deliveryName = 'CJ택배';
+                } else {
+                    deliveryUrl = `https://t.17track.net/ko#nums=${bl}`;
+                    deliveryName = '17TRACK';
+                }
+                
+                let tr = `
+                    <tr class="hover:bg-slate-50 border-b transition group">
+                        <td class="text-slate-500 text-sm text-center">${date}</td>
+                        <td class="font-bold text-slate-800 text-center">${row.item_name}</td>
+                        <td class="text-left pl-8">
+                            <span class="font-mono text-slate-700 font-bold text-lg select-all">${bl}</span>
+                        </td>
+                        
+                        <td class="text-center">
+                            <span class="text-xs text-slate-400">${isNumeric ? '국내도착' : '해외이동'}</span>
+                        </td>
+
+                        <td class="text-center">
+                            <div class="flex justify-center gap-2">
+                                ${isNumeric ? 
+                                    `<a href="javascript:openPopup('${unipassUrl}')" class="flex items-center bg-blue-50 border border-blue-200 text-blue-700 px-3 py-1.5 rounded text-sm font-bold hover:bg-blue-100 transition" title="관세청 통관목록 상세조회">
+                                        <i class="fa-solid fa-building-columns mr-1"></i> 통관상세
+                                    </a>` 
+                                    : 
+                                    `<span class="text-xs text-slate-300 py-2 select-none">관세청 조회불가</span>`
+                                }
+
+                                <a href="javascript:openPopup('${deliveryUrl}')" class="flex items-center bg-white border border-slate-300 text-slate-600 px-3 py-1.5 rounded text-sm hover:bg-slate-800 hover:text-white transition">
+                                    <i class="fa-solid fa-truck mr-1"></i> ${deliveryName}
+                                </a>
+                            </div>
+                        </td>
+                        
+                        <td class="text-center">
+                            <button onclick="deleteItem(${row.id})" class="text-slate-300 hover:text-red-500 p-2 transition"><i class="fa-solid fa-trash-can"></i></button>
+                        </td>
+                    </tr>
+                `;
+                tbody.innerHTML += tr;
+            }
+        }
+
+        // 4. 신규 저장
+        async function saveItem() {
+            const name = document.getElementById('itemName').value;
+            const bl = document.getElementById('blNo').value;
+            const note = document.getElementById('note').value;
+
+            if (!name || !bl) {
+                alert("품목명과 운송장번호를 입력해주세요.");
+                return;
+            }
+            // 숫자, 영문만 남기고 공백 제거
+            const cleanBl = bl.replace(/[^a-zA-Z0-9]/g, '');
+
+            const { error } = await supabase.from('overseas_items').insert([{ item_name: name, bl_no: cleanBl, note: note }]);
+
+            if (error) {
+                alert("저장 실패: " + error.message);
             } else {
-                deliveryUrl = `https://t.17track.net/ko#nums=${bl}`;
-                deliveryName = '17TRACK';
+                closeModal();
+                loadData(); // 저장 후 목록 갱신
             }
-            
-            let tr = `
-                <tr class="hover:bg-slate-50 border-b transition group">
-                    <td class="text-slate-500 text-sm text-center">${date}</td>
-                    <td class="font-bold text-slate-800 text-center">${row.item_name}</td>
-                    <td class="text-left pl-8">
-                        <span class="font-mono text-slate-700 font-bold text-lg select-all">${bl}</span>
-                    </td>
-                    
-                    <td class="text-center">
-                        <span class="text-xs text-slate-400">${isNumeric ? '국내도착' : '해외이동'}</span>
-                    </td>
-
-                    <td class="text-center">
-                        <div class="flex justify-center gap-2">
-                            ${isNumeric ? 
-                                `<a href="javascript:openPopup('${unipassUrl}')" class="flex items-center bg-blue-50 border border-blue-200 text-blue-700 px-3 py-1.5 rounded text-sm font-bold hover:bg-blue-100 transition" title="관세청 통관목록 상세조회">
-                                    <i class="fa-solid fa-building-columns mr-1"></i> 통관상세
-                                </a>` 
-                                : 
-                                `<span class="text-xs text-slate-300 py-2 select-none">관세청 조회불가</span>`
-                            }
-
-                            <a href="javascript:openPopup('${deliveryUrl}')" class="flex items-center bg-white border border-slate-300 text-slate-600 px-3 py-1.5 rounded text-sm hover:bg-slate-800 hover:text-white transition">
-                                <i class="fa-solid fa-truck mr-1"></i> ${deliveryName}
-                            </a>
-                        </div>
-                    </td>
-                    
-                    <td class="text-center">
-                        <button onclick="deleteItem(${row.id})" class="text-slate-300 hover:text-red-500 p-2 transition"><i class="fa-solid fa-trash-can"></i></button>
-                    </td>
-                </tr>
-            `;
-            tbody.innerHTML += tr;
         }
-    }
 
-    // 4. 신규 저장
-    async function saveItem() {
-        const name = document.getElementById('itemName').value;
-        const bl = document.getElementById('blNo').value;
-        const note = document.getElementById('note').value;
-
-        if (!name || !bl) {
-            alert("품목명과 운송장번호를 입력해주세요.");
-            return;
+        // 5. 삭제
+        async function deleteItem(id) {
+            if (confirm("삭제하시겠습니까?")) {
+                const { error } = await supabase.from('overseas_items').delete().eq('id', id);
+                if (!error) loadData();
+            }
         }
-        // 숫자, 영문만 남기고 공백 제거
-        const cleanBl = bl.replace(/[^a-zA-Z0-9]/g, '');
 
-        const { error } = await supabase.from('overseas_items').insert([{ item_name: name, bl_no: cleanBl, note: note }]);
-
-        if (error) {
-            alert("저장 실패: " + error.message);
-        } else {
-            closeModal();
-            loadData(); // 저장 후 목록 갱신
+        // 6. 팝업 및 모달 관련 함수
+        function openPopup(url) {
+            const width = 450;
+            const height = 700;
+            const left = (window.screen.width - width) / 2;
+            const top = (window.screen.height - height) / 2;
+            window.open(url, 'PopupWin', `width=${width}, height=${height}, top=${top}, left=${left}, scrollbars=yes`);
         }
-    }
 
-    // 5. 삭제
-    async function deleteItem(id) {
-        if (confirm("삭제하시겠습니까?")) {
-            const { error } = await supabase.from('overseas_items').delete().eq('id', id);
-            if (!error) loadData();
+        function logout() {
+            supabase.auth.signOut().then(() => window.location.href = 'index.html');
         }
-    }
 
-    // 6. 팝업 및 모달 관련 함수
-    function openPopup(url) {
-        const width = 450;
-        const height = 700;
-        const left = (window.screen.width - width) / 2;
-        const top = (window.screen.height - height) / 2;
-        window.open(url, 'PopupWin', `width=${width}, height=${height}, top=${top}, left=${left}, scrollbars=yes`);
-    }
+        function openModal() {
+            document.getElementById('addModal').classList.add('active');
+            document.getElementById('itemName').value = '';
+            document.getElementById('blNo').value = '';
+            document.getElementById('note').value = '';
+            setTimeout(() => document.getElementById('itemName').focus(), 100);
+        }
 
-    function logout() {
-        supabase.auth.signOut().then(() => window.location.href = 'index.html');
-    }
-
-    function openModal() {
-        document.getElementById('addModal').classList.add('active');
-        document.getElementById('itemName').value = '';
-        document.getElementById('blNo').value = '';
-        document.getElementById('note').value = '';
-        setTimeout(() => document.getElementById('itemName').focus(), 100);
-    }
-
-    function closeModal() {
-        document.getElementById('addModal').classList.remove('active');
-    }
-</script>
+        function closeModal() {
+            document.getElementById('addModal').classList.remove('active');
+        }
+    </script>
+</body>
+</html>
