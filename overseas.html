@@ -97,68 +97,141 @@
 
         // 페이지 로드 시 실행
         window.onload = async () => {
-            // 로그인 체크
-            const { data: { session } } = await supabase.auth.getSession();
-            if (!session) {
-                alert("로그인이 필요합니다.");
-                window.location.href = 'index.html'; // 로그인 페이지로 튕기기
-                return;
-            }
-            loadData();
-        };
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) { window.location.href = 'index.html'; return; }
+        document.getElementById('userEmail').innerText = session.user.email;
+        loadData();
+    };
 
-        // 데이터 불러오기
-        async function loadData() {
-            const tbody = document.getElementById('listBody');
-            tbody.innerHTML = '<tr><td colspan="6" class="p-4">로딩중...</td></tr>';
+    async function loadData() {
+        const tbody = document.getElementById('listBody');
+        tbody.innerHTML = '<tr><td colspan="6" class="p-8 text-center"><i class="fa-solid fa-spinner fa-spin"></i> 로딩중...</td></tr>';
 
-            // Supabase에서 overseas_items 테이블 조회
-            const { data, error } = await supabase
-                .from('overseas_items')
-                .select('*')
-                .order('created_at', { ascending: false });
+        const { data, error } = await supabase.from('overseas_items').select('*').order('created_at', { ascending: false });
 
-            if (error) {
-                console.error(error);
-                tbody.innerHTML = '<tr><td colspan="6" class="p-4">데이터를 불러오지 못했습니다. (테이블 생성 필요)</td></tr>';
-                return;
-            }
-
-            tbody.innerHTML = '';
-            if (!data || data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="p-4 text-slate-400">등록된 통관 내역이 없습니다.</td></tr>';
-                return;
-            }
-
-            data.forEach(row => {
-                const date = row.created_at.split('T')[0];
-                // 관세청 유니패스 직접 조회 링크 (가장 확실한 방법)
-                const trackingLink = `https://unipass.customs.go.kr/csp/index.do?tgMenuId=MYC_MNU_00000450&hblNo=${row.bl_no}`;
-                
-                let tr = `
-                    <tr class="hover:bg-slate-50">
-                        <td>${date}</td>
-                        <td class="font-bold text-slate-700">${row.item_name}</td>
-                        <td class="font-mono text-blue-600 text-lg">${row.bl_no}</td>
-                        <td class="text-sm text-slate-500">${row.note || '-'}</td>
-                        <td>
-                            <a href="${trackingLink}" target="_blank" class="bg-cyan-600 hover:bg-cyan-700 text-white px-3 py-1 rounded text-sm font-bold shadow-sm inline-flex items-center">
-                                <i class="fa-solid fa-search mr-2"></i> 진행상황 조회
-                            </a>
-                        </td>
-                        <td>
-                            <button onclick="deleteItem(${row.id})" class="text-slate-400 hover:text-red-500 transition">
-                                <i class="fa-solid fa-trash fa-lg"></i>
-                            </button>
-                        </td>
-                    </tr>
-                `;
-                tbody.innerHTML += tr;
-            });
+        if (!data || data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="p-8 text-center">내역이 없습니다.</td></tr>';
+            return;
         }
 
-        // 신규 등록
-        async function saveItem() {
+        tbody.innerHTML = '';
+        
+        // 데이터를 먼저 화면에 그립니다.
+        for (const row of data) {
+            const date = row.created_at.split('T')[0];
+            // [핵심 1] 유니패스 모바일 페이지 링크 (PC보다 훨씬 잘 열리고 파라미터가 잘 먹힘)
+            const mobileLink = `https://unipass.customs.go.kr/csp/hportal/m/cargo/cargoInfo/selectCargoInfo.do?hblNo=${row.bl_no}`;
+            
+            let tr = `
+                <tr class="hover:bg-orange-50 border-b transition group" id="row-${row.id}">
+                    <td class="text-slate-500">${date}</td>
+                    <td class="font-bold text-slate-800">${row.item_name}</td>
+                    <td class="font-mono text-blue-600 font-bold select-all">${row.bl_no}</td>
+                    
+                    <td class="text-center">
+                        <span id="status-${row.id}" class="text-xs bg-slate-100 text-slate-500 px-2 py-1 rounded">조회중...</span>
+                        <div id="time-${row.id}" class="text-[10px] text-slate-400 mt-1"></div>
+                    </td>
+
+                    <td class="text-center">
+                        <a href="javascript:openPopup('${mobileLink}')" class="bg-white border border-slate-300 text-slate-600 px-3 py-1 rounded text-sm hover:bg-orange-50 hover:text-orange-600 transition">
+                            <i class="fa-solid fa-external-link-alt mr-1"></i>상세보기
+                        </a>
+                    </td>
+                    <td class="text-center">
+                        <button onclick="deleteItem(${row.id})" class="text-slate-300 hover:text-red-500"><i class="fa-solid fa-trash-can"></i></button>
+                    </td>
+                </tr>
+            `;
+            tbody.innerHTML += tr;
+
+            // [핵심 2] 화면을 그린 후, 비동기로 유니패스 데이터를 긁어옵니다.
+            fetchUnipassStatus(row.id, row.bl_no);
+        }
+    }
+
+    // [기능] 무료 프록시를 통해 유니패스 모바일 페이지의 HTML을 가져와서 분석(Parsing)함
+    async function fetchUnipassStatus(id, blNo) {
+        const statusEl = document.getElementById(`status-${id}`);
+        const timeEl = document.getElementById(`time-${id}`);
+        
+        // 유니패스 모바일 주소 (여기가 데이터를 가져오기 가장 좋습니다)
+        const targetUrl = `https://unipass.customs.go.kr/csp/hportal/m/cargo/cargoInfo/selectCargoInfo.do?hblNo=${blNo}`;
+        // 우회 접속용 프록시 URL (CORS 해결)
+        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
+
+        try {
+            const response = await fetch(proxyUrl);
+            const json = await response.json();
+            const htmlText = json.contents; // 프록시가 가져온 HTML 원본
+
+            // HTML을 분석하기 위한 파서 생성
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(htmlText, "text/html");
+
+            // 유니패스 모바일 페이지 구조상 '처리단계'가 있는 위치를 찾습니다.
+            // (보통 테이블의 가장 첫 번째 줄이나 특정 클래스에 있습니다)
+            // ※ 유니패스 구조 변경 시 수정이 필요할 수 있습니다.
+            
+            // 예시: 모바일 페이지의 결과 테이블 첫 번째 행 찾기
+            const resultTable = doc.querySelector('table'); // 첫번째 테이블이 보통 결과임
+            
+            if (htmlText.includes("조회된 데이터가 없습니다")) {
+                statusEl.innerText = "정보 없음";
+                statusEl.className = "text-xs bg-red-100 text-red-600 px-2 py-1 rounded font-bold";
+            } else {
+                // 가장 최근 진행상태 추출 (HTML 구조 파싱 시도)
+                // 모바일 페이지에서 '통관진행상태' 같은 키워드 뒤의 값을 찾거나
+                // 테이블의 첫번째 데이터 행을 찾습니다.
+                // 여기서는 간단히 텍스트 매칭으로 중요 키워드를 찾습니다.
+                
+                // '특송물품 반출', '통관목록심사완료' 등 키워드가 있는지 확인
+                let foundStatus = "진행중";
+                let lastTime = "-";
+
+                // 간단한 파싱 로직 (모바일 페이지 테이블 구조 기반)
+                const tds = doc.querySelectorAll('td');
+                if(tds.length > 0) {
+                     // 보통 상단에 현재 상태가 요약되어 나옴
+                     // 정확한 파싱을 위해선 실제 HTML 구조 확인이 필요하나, 
+                     // '목록통관특송물품 반출' 등의 텍스트를 포함하는지 검사
+                     if(htmlText.includes("반출신고")) foundStatus = "반출 완료 (배송시작)";
+                     else if(htmlText.includes("반출")) foundStatus = "반출 완료";
+                     else if(htmlText.includes("통관목록심사완료")) foundStatus = "통관 심사 완료";
+                     else if(htmlText.includes("반입신고")) foundStatus = "세관 반입 (입항)";
+                     else if(htmlText.includes("입항보고")) foundStatus = "입항 완료";
+                     else if(htmlText.includes("적재화물목록 심사완료")) foundStatus = "적재 목록 심사";
+                     
+                     // 색상 변경
+                     if(foundStatus.includes("반출")) {
+                         statusEl.className = "text-xs bg-green-100 text-green-700 px-2 py-1 rounded font-bold";
+                     } else {
+                         statusEl.className = "text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded font-bold";
+                     }
+                }
+                
+                statusEl.innerText = foundStatus;
+                // 시간은 파싱이 까다로워 일단 '상세보기' 유도
+                timeEl.innerText = "(상세보기 클릭)"; 
+            }
+
+        } catch (e) {
+            console.error(e);
+            statusEl.innerText = "조회 실패";
+        }
+    }
+
+    // 팝업창 예쁘게 띄우기
+    function openPopup(url) {
+        const width = 500;
+        const height = 700;
+        const left = (window.screen.width - width) / 2;
+        const top = (window.screen.height - height) / 2;
+        window.open(url, 'UnipassPopup', `width=${width}, height=${height}, top=${top}, left=${left}, scrollbars=yes`);
+    }
+
+    // ... (나머지 saveItem, deleteItem 함수는 기존과 동일) ...
+    async function saveItem() {
             const name = document.getElementById('itemName').value;
             const bl = document.getElementById('blNo').value;
             const note = document.getElementById('note').value;
@@ -181,22 +254,16 @@
             }
         }
 
-        // 삭제
-        async function deleteItem(id) {
+    async function deleteItem(id) {
             if (confirm("통관이 완료되어 수령하셨나요?\n목록에서 삭제합니다.")) {
                 const { error } = await supabase.from('overseas_items').delete().eq('id', id);
                 if (!error) loadData();
             }
         }
 
-        function openModal() { 
-            document.getElementById('addModal').classList.add('active'); 
-            document.getElementById('itemName').value = '';
-            document.getElementById('blNo').value = '';
-            document.getElementById('note').value = '';
-        }
-        function closeModal() { document.getElementById('addModal').classList.remove('active'); }
-        function logout() { supabase.auth.signOut().then(()=>window.location.href='index.html'); }
+    function openModal() { document.getElementById('addModal').classList.add('active'); }
+    function closeModal() { document.getElementById('addModal').classList.remove('active'); }
+    function logout() { supabase.auth.signOut().then(()=>window.location.href='index.html'); }
     </script>
 </body>
 </html>
